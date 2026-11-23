@@ -23,12 +23,17 @@ enum Providers {
         else { throw UsageError("No Claude Code login found") }
 
         if let exp = (oauth["expiresAt"] as? NSNumber)?.doubleValue, exp / 1000 < Date().timeIntervalSince1970 {
-            throw UsageError("Login expired. Use Claude Code once to refresh it.")
+            throw LoginExpired(cli: "Claude Code")
         }
-        let json = try await getJSON("https://api.anthropic.com/api/oauth/usage", headers: [
-            "Authorization": "Bearer \(token)",
-            "anthropic-beta": "oauth-2025-04-20",
-        ])
+        let json: [String: Any]
+        do {
+            json = try await getJSON("https://api.anthropic.com/api/oauth/usage", headers: [
+                "Authorization": "Bearer \(token)",
+                "anthropic-beta": "oauth-2025-04-20",
+            ])
+        } catch let e as HTTPError where e.status == 401 || e.status == 403 {
+            throw LoginExpired(cli: "Claude Code")
+        }
         var rows: [UsageRow] = []
         for (key, title) in [("five_hour", "5h"), ("seven_day", "Week")] {
             guard let w = json[key] as? [String: Any], let used = (w["utilization"] as? NSNumber)?.doubleValue else { continue }
@@ -59,7 +64,7 @@ enum Providers {
         let json: [String: Any]
         do { json = try await getJSON("https://chatgpt.com/backend-api/wham/usage", headers: headers) }
         catch let e as HTTPError where e.status == 401 || e.status == 403 {
-            throw UsageError("Login expired. Use Codex once to refresh it.")
+            throw LoginExpired(cli: "Codex")
         }
         guard let limits = json["rate_limit"] as? [String: Any] else { throw UsageError("No usage data returned") }
         var rows: [UsageRow] = []
@@ -91,7 +96,7 @@ enum Providers {
               let token = tok["access_token"] as? String
         else { throw UsageError("No Antigravity login found") }
         if let exp = (tok["expiry"] as? String).flatMap(parseISO), exp < Date() {
-            throw UsageError("Login expired. Use agy once to refresh it.")
+            throw LoginExpired(cli: "agy")
         }
         let json: [String: Any]
         do {
@@ -99,7 +104,7 @@ enum Providers {
                                      method: "POST", body: Data("{}".utf8),
                                      headers: ["Authorization": "Bearer \(token)", "Content-Type": "application/json", "User-Agent": "antigravity"])
         } catch let e as HTTPError where e.status == 401 || e.status == 403 {
-            throw UsageError("Login expired. Use agy once to refresh it.")
+            throw LoginExpired(cli: "agy")
         }
         // Models share quota pools; show the most-used model of each pool.
         var pools: [String: (remaining: Double, reset: Date?)] = [:]

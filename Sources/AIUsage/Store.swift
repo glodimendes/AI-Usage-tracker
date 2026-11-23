@@ -7,6 +7,7 @@ final class Store: ObservableObject {
     @Published var snapshots: [UUID: Snapshot] = [:]
     @Published var errors: [UUID: String] = [:]
     @Published var loading: Set<UUID> = []
+    @Published var waking: Set<UUID> = []
     @Published var lastUpdated: Date?
 
     private var lastRefresh = Date.distantPast
@@ -88,17 +89,33 @@ final class Store: ObservableObject {
         if Date().timeIntervalSince(lastRefresh) > 60 { refresh() }
     }
 
-    func refresh() {
+    /// `manual` = the reload button: expired CLI logins are then woken by running the CLI.
+    func refresh(manual: Bool = false) {
         lastRefresh = Date()
-        accounts.forEach(refresh)
+        accounts.forEach { refresh($0, manual: manual) }
     }
 
-    func refresh(_ a: Account) {
+    /// Fetches; on an expired login and a manual reload, runs the CLI (cheapest step first) and fetches again.
+    private func fetchWaking(_ a: Account, manual: Bool) async throws -> Snapshot {
+        do { return try await Providers.fetch(a) }
+        catch let e as LoginExpired {
+            guard manual else { throw LoginExpired(cli: e.cli, pressReload: true) }
+            waking.insert(a.id)
+            defer { waking.remove(a.id) }
+            for step in CLIRefresh.steps(for: a) {
+                guard await CLIRefresh.run(step) else { continue }
+                if let snap = try? await Providers.fetch(a) { return snap }
+            }
+            throw e
+        }
+    }
+
+    func refresh(_ a: Account, manual: Bool = false) {
         guard !loading.contains(a.id) else { return }
         loading.insert(a.id)
         Task {
             do {
-                let snap = try await Providers.fetch(a)
+                let snap = try await fetchWaking(a, manual: manual)
                 snapshots[a.id] = snap
                 errors[a.id] = nil
                 if let email = snap.email, let i = accounts.firstIndex(where: { $0.id == a.id }), accounts[i].email != email {

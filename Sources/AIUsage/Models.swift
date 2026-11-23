@@ -45,6 +45,15 @@ struct Snapshot {
     var rows: [UsageRow]
 }
 
+/// A CLI login whose access token has expired. Reload can wake it by running the CLI (see CLIRefresh).
+struct LoginExpired: LocalizedError {
+    let cli: String
+    var pressReload = false
+    var errorDescription: String? {
+        pressReload ? "Login expired. Press reload to refresh it." : "Login expired. Use \(cli) once to refresh it."
+    }
+}
+
 struct UsageError: LocalizedError {
     let message: String
     init(_ message: String) { self.message = message }

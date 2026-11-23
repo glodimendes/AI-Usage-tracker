@@ -38,7 +38,7 @@ struct UsageList: View {
                 Text(store.lastUpdated.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")
                     .font(.system(size: 10)).foregroundStyle(.tertiary)
                 Spacer()
-                Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
+                Button { store.refresh(manual: true) } label: { Image(systemName: "arrow.clockwise") }
                 Button { openSettings() } label: { Image(systemName: "gearshape") }
                 Button { NSApplication.shared.terminate(nil) } label: { Image(systemName: "power") }
                     .help("Quit")
@@ -68,7 +68,9 @@ struct AccountSection: View {
             if let snap = store.snapshots[account.id] {
                 ForEach(snap.rows) { RowView(row: $0) }
             }
-            if let err = store.errors[account.id] {
+            if store.waking.contains(account.id) {
+                Text("Refreshing login…").font(.caption).foregroundStyle(.secondary)
+            } else if let err = store.errors[account.id] {
                 Text(err).font(.caption).foregroundStyle(.orange)
             }
         }
